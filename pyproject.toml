@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyliebherr"
+dynamic = ["version"]
+authors = [
+  { name="iluvdata", email="gbellsworth@gmail.com" },
+]
+description = "Wrapper for python-kasa to connect with cloud devices."
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers=[
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Home Automation",
+]
+dependencies = [
+  "aiohttp>=3.7.4"
+]
+
+[project.urls]
+Homepage = "https://github.com/iluvdata/pyliebherr"
+Issues = "https://github.com/iluvdata/pyliebherr/issues"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/__main__.py",
+]
+
+[tool.hatch.version]
+path = "pyliebherr/__version__.py"
