@@ -18,7 +18,7 @@ class LiebherrControlRequest:
 class TemperatureControlRequest(LiebherrControlRequest):
     """Temperature Control Request Model."""
 
-    zoneId: int  # noqa: N815
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
     target: int
     unit: str  # '°C' or '°F'
     control_name = "temperature"
@@ -43,7 +43,7 @@ class BaseToggleControlRequest(LiebherrControlRequest):
 class ZoneToggleControlRequest(BaseToggleControlRequest):
     """Zone Toggle Control Request Model."""
 
-    zoneId: int  # noqa: N815
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
 
 
 @dataclass
@@ -58,8 +58,8 @@ class HydroBreezeControlRequest(LiebherrControlRequest):
         MEDIUM = "MEDIUM"
         HIGH = "HIGH"
 
-    hydroBreezeMode: HydroBreezeMode  # noqa: N815
-    zoneId: int  # noqa: N815
+    hydroBreezeMode: HydroBreezeMode  # noqa: N815 pylint: disable=invalid-name
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
     control_name = "hydrobreeze"
 
 
@@ -75,8 +75,8 @@ class BioFreshPlusControlRequest(LiebherrControlRequest):
         MINUS_TWO_MINUS_TWO = "MINUS_TWO_MINUS_TWO"
         MINUS_TWO_ZERO = "MINUS_TWO_ZERO"
 
-    bioFreshPlusMode: BioFreshPlusMode  # noqa: N815
-    zoneId: int  # noqa: N815
+    bioFreshPlusMode: BioFreshPlusMode  # noqa: N815 pylint: disable=invalid-name
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
     control_name = "biofreshplus"
 
 
@@ -91,8 +91,8 @@ class IceMakerControlRequest(LiebherrControlRequest):
         ON = "ON"
         MAX_ICE = "MAX_ICE"
 
-    zoneId: int  # noqa: N815
-    iceMakerMode: IceMakerMode  # noqa: N815
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    iceMakerMode: IceMakerMode  # noqa: N815 pylint: disable=invalid-name
     control_name = "icemaker"
 
 
@@ -100,7 +100,7 @@ class IceMakerControlRequest(LiebherrControlRequest):
 class AutoDoorControl(LiebherrControlRequest):
     """Auto Door Control Request Model."""
 
-    zoneId: int  # noqa: N815
+    zoneId: int  # noqa: N815 pylint: disable=invalid-name
     value: bool  # True = open, False = close
     control_name = "autodoor"
 
@@ -111,17 +111,17 @@ class LiebherrControl:
 
     type: CONTROL_TYPE
     control_name: str
-    zoneId: int | None = None  # noqa: N815
-    zonePosition: ZONE_POSITION | None = None  # noqa: N815
+    zoneId: int | None = None  # noqa: N815 pylint: disable=invalid-name
+    zonePosition: ZONE_POSITION | None = None  # noqa: N815 pylint: disable=invalid-name
     value: bool | int | None = None
     target: int | None = None
     min: int | None = None
     max: int | None = None
-    currentMode: str | None = None  # noqa: N815
-    iceMakerMode: IceMakerControlRequest.IceMakerMode | None = None  # noqa: N815
-    supportedModes: list[str] | None = None  # noqa: N815
-    hasMaxIce: bool | None = None  # noqa: N815
-    temperatureUnit: str | None = None  # noqa: N815
+    currentMode: str | None = None  # noqa: N815 pylint: disable=invalid-name
+    iceMakerMode: IceMakerControlRequest.IceMakerMode | None = None  # noqa: N815 pylint: disable=invalid-name
+    supportedModes: list[str] | None = None  # noqa: N815 pylint: disable=invalid-name
+    hasMaxIce: bool | None = None  # noqa: N815 pylint: disable=invalid-name
+    temperatureUnit: str | None = None  # noqa: N815 pylint: disable=invalid-name
     u_measure: str | None = None
 
     @property
@@ -164,13 +164,13 @@ class LiebherrControl:
 
 @staticmethod
 def liebherr_control_from_dict(
-    object: list[dict[str, Any]] | dict[str, Any],
+    control: list[dict[str, Any]] | dict[str, Any],
 ) -> list[LiebherrControl] | LiebherrControl:
     """Get a control from a list or a dictionary."""
 
-    if isinstance(object, list):
+    if isinstance(control, list):
         new_list: list[LiebherrControl] = []
-        for dict_object in object:
+        for dict_object in control:
             if "name" in dict_object:
                 dict_object["control_name"] = dict_object["name"]
                 del dict_object["name"]
@@ -179,13 +179,13 @@ def liebherr_control_from_dict(
                 del dict_object["unit"]
             new_list.append(LiebherrControl(**dict_object))
         return new_list
-    if "name" in object:
-        object["control_name"] = object["name"]
-        del object["name"]
-    if "unit" in object:
-        object["u_measure"] = object["unit"]
-        del object["unit"]
-    return LiebherrControl(**object)
+    if "name" in control:
+        control["control_name"] = control["name"]
+        del control["name"]
+    if "unit" in control:
+        control["u_measure"] = control["unit"]
+        del control["unit"]
+    return LiebherrControl(**control)
 
 
 @dataclass

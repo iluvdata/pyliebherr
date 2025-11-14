@@ -7,7 +7,7 @@ API_VERSION = "/v1"
 BASE_API_URL = f"{BASE_URL}{API_VERSION}/"
 
 
-class CONTROL_TYPE(StrEnum):
+class CONTROL_TYPE(StrEnum): # pylint: disable=invalid-name
     """Liebherr Device Types."""
 
     TEMPERATURE = "TemperatureControl"
@@ -17,9 +17,10 @@ class CONTROL_TYPE(StrEnum):
     HYDRO_BREEZE = "HydroBreezeControl"
     TOGGLE = "ToggleControl"
     PRESENTATION_LIGHT = "PresentationLightControl"
+    IMAGE = "ImageControl"
 
 
-class ZONE_POSITION(StrEnum):
+class ZONE_POSITION(StrEnum): # pylint: disable=invalid-name
     """Liebherr Zone Positions."""
 
     TOP = "top"
