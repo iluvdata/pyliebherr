@@ -141,8 +141,8 @@ class LiebherrControl:
         if self.currentMode is None:
             return None
         if self.type == CONTROL_TYPE.BIO_FRESH_PLUS:
-            return BioFreshPlusControlRequest.BioFreshPlusMode(self.current_mode)
-        return HydroBreezeControlRequest.HydroBreezeMode(self.current_mode)
+            return BioFreshPlusControlRequest.BioFreshPlusMode(self.currentMode)
+        return HydroBreezeControlRequest.HydroBreezeMode(self.currentMode)
 
     @property
     def unit_of_measurement(self) -> str:

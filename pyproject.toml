@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="iluvdata", email="gbellsworth@gmail.com" },
 ]
-description = "Wrapper for python-kasa to connect with cloud devices."
+description = "Helper models to connect to the Liebherr Smart Device Home API."
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers=[
