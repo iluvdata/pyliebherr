@@ -1,5 +1,6 @@
 """Liebherr HomeAPI models."""
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -206,3 +207,21 @@ class LiebherrDevice:
     image_url: str
     type: Type
     controls: list[LiebherrControl]
+
+    _update_listeners: list[Callable[[], None]] = field(default_factory=list)
+
+    def add_update_listener(self, target: Callable[[], None]) -> Callable[[], None]:
+        """Register a listener for updates to this device."""
+
+        self._update_listeners.append(target)
+
+        def remove_listener() -> None:
+            """Remove the event_listener."""
+            self._update_listeners.remove(target)
+
+        return remove_listener
+
+    def notify_listeners(self) -> None:
+        """Notify all listeners about an update to this device."""
+        for listener in self._update_listeners:
+            listener()
