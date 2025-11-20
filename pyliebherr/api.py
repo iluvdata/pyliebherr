@@ -4,10 +4,14 @@ from dataclasses import asdict
 import logging
 from typing import Any
 
-from aiohttp import ClientResponse, ClientSession
+from aiohttp import ClientResponse, ClientSession, ContentTypeError
 
 from .const import BASE_API_URL
-from .exception import LiebherrAuthException, LiebherrFetchException
+from .exception import (
+    LiebherrAPILimitExceededException,
+    LiebherrAuthException,
+    LiebherrFetchException,
+)
 from .models import (
     LiebherrControl,
     LiebherrControlRequest,
@@ -24,13 +28,15 @@ async def _raise_for_error(response: ClientResponse) -> None:
     if response.status not in [200, 204]:
         _LOGGER.debug("Failed response text: %s", await response.text())
         if response.status == 401:
-            _LOGGER.exception("API-KEY provided is not valid")
             raise LiebherrAuthException
-        if response.status != 429:
-            _LOGGER.exception("API rate limit exceeded")
-            raise LiebherrFetchException(await response.json())
+        try:
+            response_text: str | dict[str, str] = await response.json()
+        except ContentTypeError:
+            response_text = await response.text()
+        if response.status == 429:
+            raise LiebherrAPILimitExceededException(response_text)
         _LOGGER.exception("Failed to fetch data @ path: %s", response.url.path)
-        raise LiebherrFetchException(await response.json())
+        raise LiebherrFetchException(response_text)
 
 
 class LiebherrAPI:
@@ -50,16 +56,7 @@ class LiebherrAPI:
         async with self._session.get(
             f"{BASE_API_URL}devices{path}", headers={"api-key": self._api_key}
         ) as response:
-            if response.status != 429:
-                await _raise_for_error(response)
-            if response.status == 429:
-                if attempt < 2:
-                    _LOGGER.warning(
-                        "Rate limit exceeded, retrying request (%d/2)", attempt + 1
-                    )
-                    return await self._request(path, attempt + 1)
-                _LOGGER.exception("API rate limit exceeded after retries")
-                raise LiebherrFetchException(await response.json())
+            await _raise_for_error(response)
 
             data: ResponseData = await response.json()
             _LOGGER.debug("Fetched data: %s", data)
