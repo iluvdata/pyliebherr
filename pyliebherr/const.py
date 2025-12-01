@@ -18,6 +18,7 @@ class CONTROL_TYPE(StrEnum): # pylint: disable=invalid-name
     TOGGLE = "ToggleControl"
     PRESENTATION_LIGHT = "PresentationLightControl"
     IMAGE = "ImageControl"
+    UPDATED = "UpdatedControl"
 
 
 class ZONE_POSITION(StrEnum): # pylint: disable=invalid-name

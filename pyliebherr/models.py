@@ -1,6 +1,5 @@
 """Liebherr HomeAPI models."""
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -114,7 +113,7 @@ class LiebherrControl:
     control_name: str
     zoneId: int | None = None  # noqa: N815 pylint: disable=invalid-name
     zonePosition: ZONE_POSITION | None = None  # noqa: N815 pylint: disable=invalid-name
-    value: bool | int | None = None
+    value: str | int | bool | None = None
     target: int | None = None
     min: int | None = None
     max: int | None = None
@@ -169,24 +168,21 @@ def liebherr_control_from_dict(
 ) -> list[LiebherrControl] | LiebherrControl:
     """Get a control from a list or a dictionary."""
 
-    if isinstance(control, list):
-        new_list: list[LiebherrControl] = []
-        for dict_object in control:
-            if "name" in dict_object:
-                dict_object["control_name"] = dict_object["name"]
-                del dict_object["name"]
-            if "unit" in dict_object:
-                dict_object["u_measure"] = dict_object["unit"]
-                del dict_object["unit"]
-            new_list.append(LiebherrControl(**dict_object))
-        return new_list
-    if "name" in control:
-        control["control_name"] = control["name"]
-        del control["name"]
-    if "unit" in control:
-        control["u_measure"] = control["unit"]
-        del control["unit"]
-    return LiebherrControl(**control)
+    if not isinstance(control, list):
+        control = [control]
+    new_list: list[LiebherrControl] = []
+    for dict_object in control:
+        if "name" in dict_object:
+            dict_object["control_name"] = dict_object["name"]
+            del dict_object["name"]
+        if "unit" in dict_object:
+            dict_object["u_measure"] = dict_object["unit"]
+            del dict_object["unit"]
+        new_list.append(LiebherrControl(**dict_object))
+    new_list.append(
+        LiebherrControl(type=CONTROL_TYPE.UPDATED, control_name="updated")
+    )
+    return new_list
 
 
 @dataclass
@@ -206,22 +202,4 @@ class LiebherrDevice:
     model: str
     image_url: str
     type: Type
-    controls: list[LiebherrControl]
-
-    _update_listeners: list[Callable[[], None]] = field(default_factory=list)
-
-    def add_update_listener(self, target: Callable[[], None]) -> Callable[[], None]:
-        """Register a listener for updates to this device."""
-
-        self._update_listeners.append(target)
-
-        def remove_listener() -> None:
-            """Remove the event_listener."""
-            self._update_listeners.remove(target)
-
-        return remove_listener
-
-    def notify_listeners(self) -> None:
-        """Notify all listeners about an update to this device."""
-        for listener in self._update_listeners:
-            listener()
+    controls: list[LiebherrControl] = field(default_factory=list)

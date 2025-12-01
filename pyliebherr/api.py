@@ -51,7 +51,7 @@ class LiebherrAPI:
             ClientSession() if client_session is None else client_session
         )
 
-    async def _request(self, path: str = "", attempt: int = 0) -> ResponseData:
+    async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices/%s", path)
         async with self._session.get(
             f"{BASE_API_URL}devices{path}", headers={"api-key": self._api_key}
@@ -93,7 +93,6 @@ class LiebherrAPI:
                 appliance["deviceName"],
                 appliance["imageUrl"],
                 appliance["deviceType"],
-                await self.async_get_controls(appliance["deviceId"]),
             )
             for appliance in data
         ]
