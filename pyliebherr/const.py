@@ -7,7 +7,7 @@ API_VERSION = "/v1"
 BASE_API_URL = f"{BASE_URL}{API_VERSION}/"
 
 
-class CONTROL_TYPE(StrEnum): # pylint: disable=invalid-name
+class ControlType(StrEnum):  # pylint: disable=invalid-name
     """Liebherr Device Types."""
 
     TEMPERATURE = "TemperatureControl"
@@ -21,7 +21,7 @@ class CONTROL_TYPE(StrEnum): # pylint: disable=invalid-name
     UPDATED = "UpdatedControl"
 
 
-class ZONE_POSITION(StrEnum): # pylint: disable=invalid-name
+class ZonePosition(StrEnum):  # pylint: disable=invalid-name
     """Liebherr Zone Positions."""
 
     TOP = "top"

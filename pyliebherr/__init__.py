@@ -3,9 +3,15 @@
 from importlib.metadata import version
 
 from .api import LiebherrAPI
-from .const import CONTROL_TYPE
-from .models import LiebherrControl, LiebherrDevice
+from .const import ControlType
+from .models import LiebherrControl, LiebherrControls, LiebherrDevice
 
 __version__ = version("pyliebherr")
 
-__all__ = ["CONTROL_TYPE", "LiebherrAPI", "LiebherrControl", "LiebherrDevice"]
+__all__ = [
+    "ControlType",
+    "LiebherrAPI",
+    "LiebherrControl",
+    "LiebherrControls",
+    "LiebherrDevice",
+]

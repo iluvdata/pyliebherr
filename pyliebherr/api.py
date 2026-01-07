@@ -13,10 +13,10 @@ from .exception import (
     LiebherrFetchException,
 )
 from .models import (
-    LiebherrControl,
     LiebherrControlRequest,
+    LiebherrControls,
     LiebherrDevice,
-    liebherr_control_from_dict,
+    liebherr_controls_from_dict,
 )
 
 type ResponseData = list[dict[str, Any]]
@@ -52,7 +52,7 @@ class LiebherrAPI:
         )
 
     async def _request(self, path: str = "") -> ResponseData:
-        _LOGGER.debug("Requesting data: /devices/%s", path)
+        _LOGGER.debug("Requesting data: /devices%s", path)
         async with self._session.get(
             f"{BASE_API_URL}devices{path}", headers={"api-key": self._api_key}
         ) as response:
@@ -97,15 +97,12 @@ class LiebherrAPI:
             for appliance in data
         ]
 
-    async def async_get_controls(self, device_id: str) -> list[LiebherrControl]:
+    async def async_get_controls(self, device_id: str) -> LiebherrControls:
         """Retrieve controls for a specific appliance."""
 
-        response_object: list[LiebherrControl] | LiebherrControl = (
-            liebherr_control_from_dict(await self._request(f"/{device_id}/controls"))
+        return liebherr_controls_from_dict(
+            await self._request(f"/{device_id}/controls")
         )
-        if not isinstance(response_object, list):
-            return [response_object]
-        return response_object
 
     async def async_set_value(
         self, device_id: str, control: LiebherrControlRequest

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from .const import CONTROL_TYPE, ZONE_POSITION
+from .const import ControlType, ZonePosition
 
 
 @dataclass
@@ -109,10 +109,10 @@ class AutoDoorControl(LiebherrControlRequest):
 class LiebherrControl:
     """Liebherr Control Model."""
 
-    type: CONTROL_TYPE
+    type: ControlType
     control_name: str
     zoneId: int | None = None  # noqa: N815 pylint: disable=invalid-name
-    zonePosition: ZONE_POSITION | None = None  # noqa: N815 pylint: disable=invalid-name
+    zonePosition: ZonePosition | None = None  # noqa: N815 pylint: disable=invalid-name
     value: str | int | bool | None = None
     target: int | None = None
     min: int | None = None
@@ -122,7 +122,7 @@ class LiebherrControl:
     supportedModes: list[str] | None = None  # noqa: N815 pylint: disable=invalid-name
     hasMaxIce: bool | None = None  # noqa: N815 pylint: disable=invalid-name
     temperatureUnit: str | None = None  # noqa: N815 pylint: disable=invalid-name
-    u_measure: str | None = None
+    measurement_unit: str | None = None
 
     @property
     def name(self) -> str:
@@ -140,14 +140,14 @@ class LiebherrControl:
         """Get the mode."""
         if self.currentMode is None:
             return None
-        if self.type == CONTROL_TYPE.BIO_FRESH_PLUS:
+        if self.type == ControlType.BIO_FRESH_PLUS:
             return BioFreshPlusControlRequest.BioFreshPlusMode(self.currentMode)
         return HydroBreezeControlRequest.HydroBreezeMode(self.currentMode)
 
     @property
     def unit_of_measurement(self) -> str:
         """Fix the units for HA."""
-        if self.u_measure is None or self.u_measure == "°C":
+        if self.measurement_unit is None or self.measurement_unit == "°C":
             return "°C"
         return "°F"
 
@@ -157,32 +157,42 @@ class LiebherrControl:
         return self.zoneId if self.zoneId is not None else 0
 
     @property
-    def zone_position(self) -> ZONE_POSITION | None:
+    def zone_position(self) -> ZonePosition | None:
         """Translate key."""
         return self.zonePosition
 
 
-@staticmethod
-def liebherr_control_from_dict(
-    control: list[dict[str, Any]] | dict[str, Any],
-) -> list[LiebherrControl] | LiebherrControl:
-    """Get a control from a list or a dictionary."""
+type ZoneID = int
+type ControlName = str
+type ControlKey = tuple[ZoneID, ControlName]
+type LiebherrMappedControls = dict[ControlKey, LiebherrControl]
+type LiebherrControls = dict[ControlType, LiebherrMappedControls]
 
-    if not isinstance(control, list):
-        control = [control]
-    new_list: list[LiebherrControl] = []
-    for dict_object in control:
+
+@staticmethod
+def liebherr_controls_from_dict(
+    controls: list[dict[str, Any]] | dict[str, Any],
+) -> LiebherrControls:
+    """Get mapping of controls from a list or a dictionary."""
+
+    if not isinstance(controls, list):
+        controls = [controls]
+    new_controls: LiebherrControls = {}
+    for dict_object in controls:
         if "name" in dict_object:
             dict_object["control_name"] = dict_object["name"]
             del dict_object["name"]
         if "unit" in dict_object:
-            dict_object["u_measure"] = dict_object["unit"]
+            dict_object["measurement_unit"] = dict_object["unit"]
             del dict_object["unit"]
-        new_list.append(LiebherrControl(**dict_object))
-    new_list.append(
-        LiebherrControl(type=CONTROL_TYPE.UPDATED, control_name="updated")
-    )
-    return new_list
+        if "zoneId" not in dict_object:
+            dict_object["zoneId"] = 0
+        if dict_object["type"] not in new_controls:
+            new_controls[dict_object["type"]] = {}
+        new_controls[dict_object["type"]][
+            (dict_object["zoneId"], dict_object["control_name"])
+        ] = LiebherrControl(**dict_object)
+    return new_controls
 
 
 @dataclass
@@ -202,4 +212,4 @@ class LiebherrDevice:
     model: str
     image_url: str
     type: Type
-    controls: list[LiebherrControl] = field(default_factory=list)
+    controls: LiebherrControls = field(default_factory=dict)
