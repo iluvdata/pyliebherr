@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from .const import ControlType, ZonePosition
+from .const import ControlName, ControlType, ZonePosition
 
 
 @dataclass
@@ -21,7 +21,7 @@ class TemperatureControlRequest(LiebherrControlRequest):
     zoneId: int  # noqa: N815 pylint: disable=invalid-name
     target: int
     unit: str  # '°C' or '°F'
-    control_name = "temperature"
+    control_name = ControlName.TEMPERATURE
 
 
 @dataclass
@@ -29,7 +29,7 @@ class PresentationLightControlRequest(LiebherrControlRequest):
     """Control the presentation light intesity."""
 
     target: int
-    control_name = "presentationlight"
+    control_name = ControlName.PRESENTATIONLIGHT
 
 
 @dataclass
@@ -60,7 +60,7 @@ class HydroBreezeControlRequest(LiebherrControlRequest):
 
     hydroBreezeMode: HydroBreezeMode  # noqa: N815 pylint: disable=invalid-name
     zoneId: int  # noqa: N815 pylint: disable=invalid-name
-    control_name = "hydrobreeze"
+    control_name = ControlName.HYDROBREEZE
 
 
 @dataclass
@@ -77,7 +77,7 @@ class BioFreshPlusControlRequest(LiebherrControlRequest):
 
     bioFreshPlusMode: BioFreshPlusMode  # noqa: N815 pylint: disable=invalid-name
     zoneId: int  # noqa: N815 pylint: disable=invalid-name
-    control_name = "biofreshplus"
+    control_name = ControlName.BIOFRESHPLUS
 
 
 @dataclass
@@ -93,7 +93,7 @@ class IceMakerControlRequest(LiebherrControlRequest):
 
     zoneId: int  # noqa: N815 pylint: disable=invalid-name
     iceMakerMode: IceMakerMode  # noqa: N815 pylint: disable=invalid-name
-    control_name = "icemaker"
+    control_name = ControlName.ICE_MAKER
 
 
 @dataclass
@@ -102,7 +102,7 @@ class AutoDoorControl(LiebherrControlRequest):
 
     zoneId: int  # noqa: N815 pylint: disable=invalid-name
     value: bool  # True = open, False = close
-    control_name = "autodoor"
+    control_name = ControlName.AUTODOOR
 
 
 @dataclass
@@ -110,7 +110,7 @@ class LiebherrControl:
     """Liebherr Control Model."""
 
     type: ControlType
-    control_name: str
+    control_name: ControlName
     zoneId: int | None = None  # noqa: N815 pylint: disable=invalid-name
     zonePosition: ZonePosition | None = None  # noqa: N815 pylint: disable=invalid-name
     value: str | int | bool | None = None
@@ -152,9 +152,9 @@ class LiebherrControl:
         return "°F"
 
     @property
-    def zone_id(self) -> int:
+    def zone_id(self) -> int | None:
         """Translate key."""
-        return self.zoneId if self.zoneId is not None else 0
+        return self.zoneId
 
     @property
     def zone_position(self) -> ZonePosition | None:
@@ -162,11 +162,9 @@ class LiebherrControl:
         return self.zonePosition
 
 
-type ZoneID = int
-type ControlName = str
-type ControlKey = tuple[ZoneID, ControlName]
-type LiebherrMappedControls = dict[ControlKey, LiebherrControl]
-type LiebherrControls = dict[ControlType, LiebherrMappedControls]
+type ZoneID = int | None
+type LiebherrZonedControls = dict[ZoneID, LiebherrControl]
+type LiebherrControls = dict[ControlName, LiebherrControl | LiebherrZonedControls]
 
 
 @staticmethod
@@ -185,13 +183,14 @@ def liebherr_controls_from_dict(
         if "unit" in dict_object:
             dict_object["measurement_unit"] = dict_object["unit"]
             del dict_object["unit"]
-        if "zoneId" not in dict_object:
-            dict_object["zoneId"] = 0
-        if dict_object["type"] not in new_controls:
-            new_controls[dict_object["type"]] = {}
-        new_controls[dict_object["type"]][
-            (dict_object["zoneId"], dict_object["control_name"])
-        ] = LiebherrControl(**dict_object)
+        control: LiebherrControl = LiebherrControl(**dict_object)
+        if control.zone_id is not None:
+            if control.control_name not in new_controls:
+                new_controls[control.control_name] = {}
+            new_controls[control.control_name][control.zone_id] = control
+        else:
+            new_controls[control.control_name] = control
+
     return new_controls
 
 
@@ -199,7 +198,7 @@ def liebherr_controls_from_dict(
 class LiebherrDevice:
     """Liebherr Device Model."""
 
-    class Type(StrEnum):
+    class DeviceType(StrEnum):
         """Device Types."""
 
         FRIDGE = "FRIDGE"
@@ -211,5 +210,5 @@ class LiebherrDevice:
     name: str
     model: str
     image_url: str
-    type: Type
+    deviceType: DeviceType  # noqa: N815
     controls: LiebherrControls = field(default_factory=dict)

@@ -85,7 +85,6 @@ class LiebherrAPI:
 
         data: ResponseData = await self._request()
 
-        _LOGGER.debug("Fetched appliances: %s", data)
         return [
             LiebherrDevice(
                 appliance["deviceId"],
