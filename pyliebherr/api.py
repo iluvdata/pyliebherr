@@ -1,6 +1,5 @@
 """The Liebherr Smart Device API."""
 
-from dataclasses import asdict
 import logging
 from typing import Any
 
@@ -80,21 +79,16 @@ class LiebherrAPI:
             _LOGGER.debug("Posted data response: %s", data)
             return data
 
-    async def async_get_appliances(self) -> list[LiebherrDevice]:
+    async def async_get_devices(self) -> list[LiebherrDevice]:
         """Retrieve the list of appliances."""
 
         data: ResponseData = await self._request()
 
-        return [
-            LiebherrDevice(
-                appliance["deviceId"],
-                appliance.get("nickname", appliance["deviceName"]),
-                appliance["deviceName"],
-                appliance["imageUrl"],
-                appliance["deviceType"],
-            )
-            for appliance in data
-        ]
+        devices: list[LiebherrDevice] = []
+        for device in data:
+            liebherr_device: LiebherrDevice = LiebherrDevice.from_dict(device)
+            devices.append(liebherr_device)
+        return devices
 
     async def async_get_controls(self, device_id: str) -> LiebherrControls:
         """Retrieve controls for a specific appliance."""
@@ -107,8 +101,8 @@ class LiebherrAPI:
         self, device_id: str, control: LiebherrControlRequest
     ) -> ResponseData | None:
         """Activate or deactivate a control."""
-        value: dict[str, Any] = asdict(control)
-        del value["control_name"]
+        value: dict[str, Any] = control.to_dict()
+        del value["controlName"]
 
         return await self._post(f"/{device_id}/controls/{control.control_name}", value)
 

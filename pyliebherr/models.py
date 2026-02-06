@@ -4,9 +4,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from dataclasses_json import LetterCase, config, dataclass_json
+
 from .const import ControlName, ControlType, ZonePosition
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class LiebherrControlRequest:
     """Liebherr Control Model."""
@@ -14,11 +17,12 @@ class LiebherrControlRequest:
     control_name: str = field(init=False)
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class TemperatureControlRequest(LiebherrControlRequest):
     """Temperature Control Request Model."""
 
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    zone_id: int
     target: int
     unit: str  # '°C' or '°F'
     control_name = ControlName.TEMPERATURE
@@ -39,13 +43,15 @@ class BaseToggleControlRequest(LiebherrControlRequest):
     value: bool
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class ZoneToggleControlRequest(BaseToggleControlRequest):
     """Zone Toggle Control Request Model."""
 
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    zone_id: int
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class HydroBreezeControlRequest(LiebherrControlRequest):
     """HydroBreeze Control."""
@@ -58,11 +64,12 @@ class HydroBreezeControlRequest(LiebherrControlRequest):
         MEDIUM = "MEDIUM"
         HIGH = "HIGH"
 
-    hydroBreezeMode: HydroBreezeMode  # noqa: N815 pylint: disable=invalid-name
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    hydro_breeze_mode: HydroBreezeMode
+    zone_id: int
     control_name = ControlName.HYDROBREEZE
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class BioFreshPlusControlRequest(LiebherrControlRequest):
     """BiofreshPlusControl."""
@@ -75,11 +82,12 @@ class BioFreshPlusControlRequest(LiebherrControlRequest):
         MINUS_TWO_MINUS_TWO = "MINUS_TWO_MINUS_TWO"
         MINUS_TWO_ZERO = "MINUS_TWO_ZERO"
 
-    bioFreshPlusMode: BioFreshPlusMode  # noqa: N815 pylint: disable=invalid-name
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    bio_fresh_plus_mode: BioFreshPlusMode
+    zone_id: int
     control_name = ControlName.BIOFRESHPLUS
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class IceMakerControlRequest(LiebherrControlRequest):
     """Ice Maker Control Request Model."""
@@ -91,43 +99,52 @@ class IceMakerControlRequest(LiebherrControlRequest):
         ON = "ON"
         MAX_ICE = "MAX_ICE"
 
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
-    iceMakerMode: IceMakerMode  # noqa: N815 pylint: disable=invalid-name
+    zone_id: int
+    ice_maker_mode: IceMakerMode
     control_name = ControlName.ICE_MAKER
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class AutoDoorControl(LiebherrControlRequest):
     """Auto Door Control Request Model."""
 
-    zoneId: int  # noqa: N815 pylint: disable=invalid-name
+    zone_id: int
     value: bool  # True = open, False = close
     control_name = ControlName.AUTODOOR
 
 
+type ZoneID = int | None
+
+
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class LiebherrControl:
     """Liebherr Control Model."""
 
     type: ControlType
-    control_name: ControlName
-    zoneId: int | None = None  # noqa: N815 pylint: disable=invalid-name
-    zonePosition: ZonePosition | None = None  # noqa: N815 pylint: disable=invalid-name
+    _control_name: ControlName = field(metadata=config(field_name="name"))
+    zone_id: ZoneID | None = None
+    zone_position: ZonePosition | None = None
     value: str | int | bool | None = None
     target: int | None = None
     min: int | None = None
     max: int | None = None
-    currentMode: str | None = None  # noqa: N815 pylint: disable=invalid-name
-    iceMakerMode: IceMakerControlRequest.IceMakerMode | None = None  # noqa: N815 pylint: disable=invalid-name
-    supportedModes: list[str] | None = None  # noqa: N815 pylint: disable=invalid-name
-    hasMaxIce: bool | None = None  # noqa: N815 pylint: disable=invalid-name
-    temperatureUnit: str | None = None  # noqa: N815 pylint: disable=invalid-name
-    measurement_unit: str | None = None
+    _current_mode: str | None = field(
+        default=None, metadata=config(field_name="currentMode")
+    )
+    ice_maker_mode: IceMakerControlRequest.IceMakerMode | None = None
+    supported_modes: list[str] | None = None
+    has_max_ice: bool | None = None
+    temperature_unit: str | None = None
+    _measurement_unit: str | None = field(
+        default=None, metadata=config(field_name="unit")
+    )
 
     @property
-    def name(self) -> str:
+    def control_name(self) -> str:
         """Get control name."""
-        return self.name if self.name else self.type
+        return self._control_name if self._control_name else self.type
 
     @property
     def current_mode(
@@ -138,31 +155,22 @@ class LiebherrControl:
         | None
     ):
         """Get the mode."""
-        if self.currentMode is None:
+        if self._current_mode is None:
             return None
         if self.type == ControlType.BIO_FRESH_PLUS:
-            return BioFreshPlusControlRequest.BioFreshPlusMode(self.currentMode)
-        return HydroBreezeControlRequest.HydroBreezeMode(self.currentMode)
+            return BioFreshPlusControlRequest.BioFreshPlusMode(self._current_mode)
+        return HydroBreezeControlRequest.HydroBreezeMode(self._current_mode)
 
     @property
     def unit_of_measurement(self) -> str:
         """Fix the units for HA."""
-        if self.measurement_unit is None or self.measurement_unit == "°C":
-            return "°C"
-        return "°F"
-
-    @property
-    def zone_id(self) -> int | None:
-        """Translate key."""
-        return self.zoneId
-
-    @property
-    def zone_position(self) -> ZonePosition | None:
-        """Translate key."""
-        return self.zonePosition
+        return (
+            "°C"
+            if self._measurement_unit is None or self._measurement_unit == "°C"
+            else "°F"
+        )
 
 
-type ZoneID = int | None
 type LiebherrZonedControls = dict[ZoneID, LiebherrControl]
 type LiebherrControls = dict[ControlName, LiebherrControl | LiebherrZonedControls]
 
@@ -177,13 +185,7 @@ def liebherr_controls_from_dict(
         controls = [controls]
     new_controls: LiebherrControls = {}
     for dict_object in controls:
-        if "name" in dict_object:
-            dict_object["control_name"] = dict_object["name"]
-            del dict_object["name"]
-        if "unit" in dict_object:
-            dict_object["measurement_unit"] = dict_object["unit"]
-            del dict_object["unit"]
-        control: LiebherrControl = LiebherrControl(**dict_object)
+        control: LiebherrControl = LiebherrControl.from_dict(dict_object)
         if control.zone_id is not None:
             if control.control_name not in new_controls:
                 new_controls[control.control_name] = {}
@@ -194,6 +196,7 @@ def liebherr_controls_from_dict(
     return new_controls
 
 
+@dataclass_json(letter_case=LetterCase.CAMEL)
 @dataclass
 class LiebherrDevice:
     """Liebherr Device Model."""
@@ -207,8 +210,7 @@ class LiebherrDevice:
         COMBI = "COMBI"
 
     device_id: str
-    name: str
-    model: str
+    name: str = field(metadata=config(field_name="nickname"))
+    model: str = field(metadata=config(field_name="deviceName"))
     image_url: str
-    deviceType: DeviceType  # noqa: N815
-    controls: LiebherrControls = field(default_factory=dict)
+    device_type: DeviceType
