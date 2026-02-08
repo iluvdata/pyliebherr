@@ -39,7 +39,7 @@ class ControlName(StrEnum):
 CONTROL_NAMES: dict[ControlType, set[ControlName]] = {
     ControlType.AUTO_DOOR_CONTROL: {ControlName.AUTODOOR},
     ControlType.BIO_FRESH_PLUS: {ControlName.BIOFRESHPLUS},
-    ControlType.HYDRO_BREEZE: {ControlName.BIOFRESHPLUS},
+    ControlType.HYDRO_BREEZE: {ControlName.HYDROBREEZE},
     ControlType.ICE_MAKER: {ControlName.ICE_MAKER},
     ControlType.PRESENTATION_LIGHT: {ControlName.PRESENTATIONLIGHT},
     ControlType.TEMPERATURE: {ControlName.TEMPERATURE},
