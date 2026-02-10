@@ -161,6 +161,11 @@ class LiebherrControl:
             return BioFreshPlusControlRequest.BioFreshPlusMode(self._current_mode)
         return HydroBreezeControlRequest.HydroBreezeMode(self._current_mode)
 
+    @current_mode.setter
+    def current_mode(self, value: str) -> None:
+        """Set the mode."""
+        self._current_mode = value
+
     @property
     def unit_of_measurement(self) -> str:
         """Fix the units for HA."""
