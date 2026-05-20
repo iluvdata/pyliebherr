@@ -1,59 +1,57 @@
 """Liebherr HomeAPI models."""
 
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any
 
-from dataclasses_json import LetterCase, config, dataclass_json
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic.alias_generators import to_camel
 
 from .const import ControlName, ControlType, ZonePosition
 
+MODEL_CONFIG: ConfigDict = ConfigDict(alias_generator=to_camel)
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class LiebherrControlRequest:
+
+class LiebherrControlRequest(BaseModel):
     """Liebherr Control Model."""
 
-    control_name: str = field(init=False)
+    model_config = MODEL_CONFIG
+
+    control_name: str
 
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class TemperatureControlRequest(LiebherrControlRequest):
-    """Temperature Control Request Model."""
+class ZonedControlRequest(LiebherrControlRequest):
+    """Zoned control request model."""
 
     zone_id: int
+
+
+class TemperatureControlRequest(ZonedControlRequest):
+    """Temperature Control Request Model."""
+
     target: int
     unit: str  # '°C' or '°F'
-    control_name = ControlName.TEMPERATURE
+    control_name: str = Field(ControlName.TEMPERATURE)
 
 
-@dataclass
 class PresentationLightControlRequest(LiebherrControlRequest):
-    """Control the presentation light intesity."""
+    """Control the presentation light intensity."""
 
     target: int
-    control_name = ControlName.PRESENTATIONLIGHT
+    control_name: str = Field(ControlName.PRESENTATIONLIGHT)
 
 
-@dataclass
 class BaseToggleControlRequest(LiebherrControlRequest):
     """Base Toggle Control Request Model."""
 
     value: bool
 
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class ZoneToggleControlRequest(BaseToggleControlRequest):
+class ZoneToggleControlRequest(BaseToggleControlRequest, ZonedControlRequest):
     """Zone Toggle Control Request Model."""
 
-    zone_id: int
 
-
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class HydroBreezeControlRequest(LiebherrControlRequest):
+class HydroBreezeControlRequest(ZonedControlRequest):
     """HydroBreeze Control."""
 
     class HydroBreezeMode(StrEnum):
@@ -66,11 +64,9 @@ class HydroBreezeControlRequest(LiebherrControlRequest):
 
     hydro_breeze_mode: HydroBreezeMode
     zone_id: int
-    control_name = ControlName.HYDROBREEZE
+    control_name: str = Field(ControlName.HYDROBREEZE)
 
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
 class BioFreshPlusControlRequest(LiebherrControlRequest):
     """BiofreshPlusControl."""
 
@@ -83,13 +79,10 @@ class BioFreshPlusControlRequest(LiebherrControlRequest):
         MINUS_TWO_ZERO = "MINUS_TWO_ZERO"
 
     bio_fresh_plus_mode: BioFreshPlusMode
-    zone_id: int
-    control_name = ControlName.BIOFRESHPLUS
+    control_name: str = Field(ControlName.BIOFRESHPLUS)
 
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class IceMakerControlRequest(LiebherrControlRequest):
+class IceMakerControlRequest(ZonedControlRequest):
     """Ice Maker Control Request Model."""
 
     class IceMakerMode(StrEnum):
@@ -99,52 +92,51 @@ class IceMakerControlRequest(LiebherrControlRequest):
         ON = "ON"
         MAX_ICE = "MAX_ICE"
 
-    zone_id: int
     ice_maker_mode: IceMakerMode
-    control_name = ControlName.ICE_MAKER
+    control_name: str = Field(ControlName.ICE_MAKER)
 
 
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class AutoDoorControl(LiebherrControlRequest):
+class AutoDoorControlRequest(ZonedControlRequest):
     """Auto Door Control Request Model."""
 
-    zone_id: int
     value: bool  # True = open, False = close
-    control_name = ControlName.AUTODOOR
+    control_name: str = Field(ControlName.AUTODOOR)
 
 
-type ZoneID = int | None
-
-
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class LiebherrControl:
+class LiebherrControl(BaseModel):
     """Liebherr Control Model."""
 
+    model_config = MODEL_CONFIG
+
     type: ControlType
-    _control_name: ControlName = field(metadata=config(field_name="name"))
-    zone_id: ZoneID | None = None
+    control: ControlName = Field(validation_alias="name", serialization_alias="name")
+    zone_id: int | None = None
     zone_position: ZonePosition | None = None
     value: str | int | bool | None = None
     target: int | None = None
     min: int | None = None
     max: int | None = None
-    _current_mode: str | None = field(
-        default=None, metadata=config(field_name="currentMode")
+    mode: str | None = Field(
+        validation_alias="currentMode", serialization_alias="currentMode", default=None
     )
     ice_maker_mode: IceMakerControlRequest.IceMakerMode | None = None
     supported_modes: list[str] | None = None
     has_max_ice: bool | None = None
-    temperature_unit: str | None = None
-    _measurement_unit: str | None = field(
-        default=None, metadata=config(field_name="unit")
+    measurement_unit: str | None = Field(
+        validation_alias="unit", serialization_alias="unit", default=None
     )
+
+    update_callback: Callable[[], None] | None = Field(None, exclude=True)
+
+    def updated(self) -> None:
+        """Update received via Device."""
+        if callable(self.update_callback):
+            self.update_callback()
 
     @property
     def control_name(self) -> str:
         """Get control name."""
-        return self._control_name if self._control_name else self.type
+        return self.control or self.type
 
     @property
     def current_mode(
@@ -155,56 +147,35 @@ class LiebherrControl:
         | None
     ):
         """Get the mode."""
-        if self._current_mode is None:
+        if self.mode is None:
             return None
         if self.type == ControlType.BIO_FRESH_PLUS:
-            return BioFreshPlusControlRequest.BioFreshPlusMode(self._current_mode)
-        return HydroBreezeControlRequest.HydroBreezeMode(self._current_mode)
+            return BioFreshPlusControlRequest.BioFreshPlusMode(self.mode)
+        return HydroBreezeControlRequest.HydroBreezeMode(self.mode)
 
     @current_mode.setter
     def current_mode(self, value: str) -> None:
         """Set the mode."""
-        self._current_mode = value
+        self.mode = value
 
     @property
     def unit_of_measurement(self) -> str:
         """Fix the units for HA."""
         return (
             "°C"
-            if self._measurement_unit is None or self._measurement_unit == "°C"
+            if self.measurement_unit is None or self.measurement_unit == "°C"
             else "°F"
         )
 
 
-type LiebherrZonedControls = dict[ZoneID, LiebherrControl]
-type LiebherrControls = dict[ControlName, LiebherrControl | LiebherrZonedControls]
+LiebherrControlKey = tuple[ControlName, int]
+LiebherrControls = dict[LiebherrControlKey, LiebherrControl]
 
 
-@staticmethod
-def liebherr_controls_from_dict(
-    controls: list[dict[str, Any]] | dict[str, Any],
-) -> LiebherrControls:
-    """Get mapping of controls from a list or a dictionary."""
-
-    if not isinstance(controls, list):
-        controls = [controls]
-    new_controls: LiebherrControls = {}
-    for dict_object in controls:
-        control: LiebherrControl = LiebherrControl.from_dict(dict_object)
-        if control.zone_id is not None:
-            if control.control_name not in new_controls:
-                new_controls[control.control_name] = {}
-            new_controls[control.control_name][control.zone_id] = control
-        else:
-            new_controls[control.control_name] = control
-
-    return new_controls
-
-
-@dataclass_json(letter_case=LetterCase.CAMEL)
-@dataclass
-class LiebherrDevice:
+class LiebherrDevice(BaseModel):
     """Liebherr Device Model."""
+
+    model_config = MODEL_CONFIG
 
     class DeviceType(StrEnum):
         """Device Types."""
@@ -215,7 +186,40 @@ class LiebherrDevice:
         COMBI = "COMBI"
 
     device_id: str
-    name: str = field(metadata=config(field_name="nickname"))
-    model: str = field(metadata=config(field_name="deviceName"))
+    name: str = Field(validation_alias="nickname")
+    model: str = Field(validation_alias="deviceName")
     image_url: str
     device_type: DeviceType
+    controls: Annotated[
+        LiebherrControls,
+        PlainSerializer(lambda x: list(x.values()), return_type=list[LiebherrControl]),
+    ] = Field(default_factory=dict)
+
+    # Excluded from serialization
+    first_sse: bool = Field(False, exclude=True)
+    update_callback: Callable[[LiebherrDevice], None] | None = Field(None, exclude=True)
+
+    def updated(self, data: list[Mapping[str, Any]]) -> None:
+        """Update received via SSE."""
+        self._update_controls(data)
+        self.first_sse = True
+        if callable(self.update_callback):
+            self.update_callback(self)
+
+    def _update_controls(self, controls: list[Mapping[str, Any]]) -> None:
+        """Get mapping of controls from a list or a dictionary."""
+
+        for dict_object in controls:
+            control: LiebherrControl = LiebherrControl.model_validate(dict_object)
+
+            control_key: tuple[ControlName, int | None] = (
+                control.control_name,
+                control.zone_id,
+            )
+
+            if self.controls.get(control_key):  # pylint: disable=no-member
+                control.update_callback = self.controls[control_key].update_callback
+                self.controls[control_key] = control
+                self.controls[control_key].updated()
+            else:
+                self.controls[control_key] = control

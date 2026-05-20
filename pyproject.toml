@@ -18,7 +18,8 @@ classifiers=[
     "Topic :: Home Automation",
 ]
 dependencies = [
-  "aiohttp>=3.7.4"
+  "httpx>=0.28.1",
+  "httpx-sse==0.4.3"
 ]
 
 [project.urls]

@@ -1,83 +1,144 @@
 """The Liebherr Smart Device API."""
 
+import asyncio
+from asyncio import Task, create_task
+from collections.abc import Mapping
 import logging
+from ssl import SSLContext
 from typing import Any
 
-from aiohttp import ClientResponse, ClientSession, ContentTypeError
+from httpx import AsyncClient, Response, Timeout
+from httpx_sse import aconnect_sse
 
-from .const import BASE_API_URL
+from .const import BASE_API_URL, ControlName, ControlType
 from .exception import (
     LiebherrAPILimitExceededException,
     LiebherrAuthException,
     LiebherrFetchException,
 )
-from .models import (
-    LiebherrControlRequest,
-    LiebherrControls,
-    LiebherrDevice,
-    liebherr_controls_from_dict,
-)
+from .models import LiebherrControlRequest, LiebherrDevice
 
-type ResponseData = list[dict[str, Any]]
+type ResponseData = list[Mapping[str, Any]]
 
 _LOGGER = logging.getLogger(__package__)
 
 
-async def _raise_for_error(response: ClientResponse) -> None:
-    if response.status not in [200, 204]:
-        _LOGGER.debug("Failed response text: %s", await response.text())
-        if response.status == 401:
+def _raise_for_error(response: Response) -> None:
+    if response.status_code not in [200, 204]:
+        _LOGGER.debug("Failed response text: %s", response.text)
+        if response.status_code == 401:
             raise LiebherrAuthException
-        try:
-            response_text: str | dict[str, str] = await response.json()
-        except ContentTypeError:
-            response_text = await response.text()
-        if response.status == 429:
+        response_text: str | dict[str, str] = (
+            response.json() if response.request.method != "HEAD" else ""
+        )
+        if response.status_code == 429:
             raise LiebherrAPILimitExceededException(response_text)
-        _LOGGER.exception("Failed to fetch data @ path: %s", response.url.path)
+        _LOGGER.warning("Failed to fetch data @ path: %s", response.url.path)
         raise LiebherrFetchException(response_text)
+
+
+def _handle_task_result(task: Task[None]) -> None:
+    if exc := task.exception():
+        _LOGGER.error("%s error", task.get_name(), exc_info=exc)
+        return
+    _LOGGER.warning("%s ended", task.get_name())
 
 
 class LiebherrAPI:
     """Liebherr API Class."""
 
-    def __init__(
-        self, api_key: str, client_session: ClientSession | None = None
-    ) -> None:
+    def __init__(self, api_key: str, ssl_context: SSLContext | None = None) -> None:
         """Initialize the Liebherr HomeAPI."""
-        self._api_key: str = api_key
-        self._session: ClientSession = (
-            ClientSession() if client_session is None else client_session
+        self._client: AsyncClient
+        self._sse_tasks: set[Task[None]] = set()
+        if ssl_context is None:
+            self._client = AsyncClient(
+                timeout=Timeout(60, read=None),
+                headers={"api-key": api_key},
+                base_url=f"{BASE_API_URL}",
+            )
+        else:
+            self._client = AsyncClient(
+                timeout=Timeout(60, read=None),
+                headers={"api-key": api_key},
+                base_url=f"{BASE_API_URL}",
+                verify=ssl_context,
+            )
+
+    async def async_test_key(self) -> None:
+        """Test the api key."""
+        await self._request()
+
+    def start_sse(self, device: LiebherrDevice) -> None:
+        """Register a callback function to call when SSE updates are received."""
+
+        async def connect_sse() -> None:
+            async with aconnect_sse(
+                self._client,
+                "GET",
+                f"sse/devices/{device.device_id}/controls",
+            ) as event_source:
+                event_source.response.raise_for_status()
+                _LOGGER.debug("Connected to Liebherr SSE")
+
+                async for sse in event_source.aiter_sse():
+                    _LOGGER.debug("SSE: %s received with data %s", sse.event, sse.data)
+
+                    data: ResponseData = sse.json()
+
+                    # TODO:  remove this when api is fixed
+                    if device.first_sse and [
+                        control
+                        for control in data
+                        if control["type"] == str(ControlType.TEMPERATURE)
+                    ]:
+                        temp_controls: ResponseData = (
+                            await self._get_temperature_controls(device.device_id)
+                        )
+                        for index, control in enumerate(data):
+                            if control["type"] == ControlType.TEMPERATURE:
+                                data[index] = [
+                                    temp_control
+                                    for temp_control in temp_controls
+                                    if control["zoneId"] == temp_control["zoneId"]
+                                ][0]
+                        _LOGGER.debug("Transformed SSE: %s", data)
+
+                    device.updated(data)
+
+        task: Task[None] = create_task(
+            connect_sse(),
+            eager_start=True,
+            name=f"Liebherr-{device.device_id}-SSE",  # pyright: ignore[reportCallIssue]
         )
+
+        task.add_done_callback(_handle_task_result)
+        self._sse_tasks.add(task)
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
-        async with self._session.get(
-            f"{BASE_API_URL}devices{path}", headers={"api-key": self._api_key}
-        ) as response:
-            await _raise_for_error(response)
-
-            data: ResponseData = await response.json()
-            _LOGGER.debug("Fetched data: %s", data)
-            return data
+        response: Response = await self._client.get(f"devices{path}")
+        _raise_for_error(response)
+        data: ResponseData = response.json()
+        _LOGGER.debug("Fetched data: %s", data)
+        return data
 
     async def _post(self, path, payload: dict[str, Any]) -> ResponseData | None:
-        _LOGGER.debug("Posting data to: /devices%s", path)
-        async with self._session.post(
-            f"{BASE_API_URL}devices{path}",
+        _LOGGER.debug("Posting data to: /devices%s", f"devices{path}")
+        response: Response = await self._client.post(
+            f"devices{path}",
             json=payload,
             headers={
-                "api-key": self._api_key,
                 "Content-Type": "application/json",
             },
-        ) as response:
-            await _raise_for_error(response)
-            if response.status == 204:
-                # Success but no body is returned.
-                return None
-            data: ResponseData = await response.json()
-            _LOGGER.debug("Posted data response: %s", data)
-            return data
+        )
+        _raise_for_error(response)
+        if response.status_code == 204:
+            # Success but no body is returned.
+            return None
+        data: ResponseData = await response.json()
+        _LOGGER.debug("Posted data response: %s", data)
+        return data
 
     async def async_get_devices(self) -> list[LiebherrDevice]:
         """Retrieve the list of appliances."""
@@ -85,27 +146,52 @@ class LiebherrAPI:
         data: ResponseData = await self._request()
 
         devices: list[LiebherrDevice] = []
+
         for device in data:
-            liebherr_device: LiebherrDevice = LiebherrDevice.from_dict(device)
+            liebherr_device: LiebherrDevice = LiebherrDevice.model_validate(device)
+            self.start_sse(liebherr_device)
             devices.append(liebherr_device)
         return devices
 
-    async def async_get_controls(self, device_id: str) -> LiebherrControls:
-        """Retrieve controls for a specific appliance."""
+    async def async_get_devices_wait_for_controls(
+        self, timeout: float = 10
+    ) -> list[LiebherrDevice]:
+        """Get devices and wait for first SSE."""
 
-        return liebherr_controls_from_dict(
-            await self._request(f"/{device_id}/controls")
+        async def wait_for_first_sse(device: LiebherrDevice) -> None:
+            while not device.first_sse:
+                await asyncio.sleep(0.5)
+
+        devices: list[LiebherrDevice] = await self.async_get_devices()
+
+        async with asyncio.timeout(timeout), asyncio.TaskGroup() as tg:
+            for device in devices:
+                tg.create_task(wait_for_first_sse(device))
+
+        return devices
+
+    async def _get_temperature_controls(self, device_id: str) -> ResponseData:
+        """TODO: This can got when Liebherr fixes SSE responses."""
+
+        data: ResponseData = await self._request(
+            f"/{device_id}/controls/{ControlName.TEMPERATURE}"
         )
+
+        return [
+            control for control in data if control["type"] == ControlType.TEMPERATURE
+        ]
 
     async def async_set_value(
         self, device_id: str, control: LiebherrControlRequest
     ) -> ResponseData | None:
         """Activate or deactivate a control."""
-        value: dict[str, Any] = control.to_dict()
+        value: dict[str, Any] = control.model_dump(by_alias=True)
         del value["controlName"]
 
         return await self._post(f"/{device_id}/controls/{control.control_name}", value)
 
     async def async_close(self) -> None:
         """Close the aiohttp session."""
-        await self._session.close()
+        for task in self._sse_tasks:
+            task.cancel()
+        await self._client.aclose()
