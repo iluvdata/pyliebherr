@@ -4,10 +4,10 @@ from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
-from .const import ControlName, ControlType, ZonePosition
+from .const import ControlName, ControlType, ZonePosition, TempUnit
 
 MODEL_CONFIG: ConfigDict = ConfigDict(alias_generator=to_camel)
 
@@ -30,7 +30,7 @@ class TemperatureControlRequest(ZonedControlRequest):
     """Temperature Control Request Model."""
 
     target: int
-    unit: str  # '°C' or '°F'
+    unit: TempUnit  # '°C' or '°F'
     control_name: str = Field(ControlName.TEMPERATURE)
 
 
@@ -122,8 +122,8 @@ class LiebherrControl(BaseModel):
     ice_maker_mode: IceMakerControlRequest.IceMakerMode | None = None
     supported_modes: list[str] | None = None
     has_max_ice: bool | None = None
-    measurement_unit: str | None = Field(
-        validation_alias="unit", serialization_alias="unit", default=None
+    measurement_unit: TempUnit | None = Field(
+        validation_alias=AliasChoices("unit", "temperatureUnit"), serialization_alias="unit", default=None
     )
 
     update_callback: Callable[[], None] | None = Field(None, exclude=True)
@@ -159,12 +159,12 @@ class LiebherrControl(BaseModel):
         self.mode = value
 
     @property
-    def unit_of_measurement(self) -> str:
+    def unit_of_measurement(self) -> TempUnit:
         """Fix the units for HA."""
         return (
-            "°C"
-            if self.measurement_unit is None or self.measurement_unit == "°C"
-            else "°F"
+            TempUnit.CELSIUS
+            if self.measurement_unit is None or self.measurement_unit == TempUnit.CELSIUS
+            else TempUnit.FAHRENHEIT
         )
 
 
@@ -197,7 +197,8 @@ class LiebherrDevice(BaseModel):
 
     # Excluded from serialization
     first_sse: bool = Field(False, exclude=True)
-    update_callback: Callable[[LiebherrDevice], None] | None = Field(None, exclude=True)
+    update_callback: Callable[["LiebherrDevice"], None] | None = Field(None, exclude=True)
+    temperature_unit: TempUnit = Field(TempUnit.CELSIUS, exclude=True)
 
     def updated(self, data: list[Mapping[str, Any]]) -> None:
         """Update received via SSE."""
@@ -212,9 +213,12 @@ class LiebherrDevice(BaseModel):
         for dict_object in controls:
             control: LiebherrControl = LiebherrControl.model_validate(dict_object)
 
-            control_key: tuple[ControlName, int | None] = (
-                control.control_name,
-                control.zone_id,
+            if not self.first_sse and control.type == ControlType.TEMPERATURE:
+                self.temperature_unit = control.unit_of_measurement
+
+            control_key: tuple[ControlName, int] = (
+                ControlName(control.control_name),
+                control.zone_id or 0,
             )
 
             if self.controls.get(control_key):  # pylint: disable=no-member

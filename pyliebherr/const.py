@@ -58,3 +58,9 @@ class ZonePosition(StrEnum):
     TOP = "top"
     BOTTOM = "bottom"
     MIDDLE = "middle"
+
+class TempUnit(StrEnum):
+    """Temperature Units."""
+
+    CELSIUS = "°C"
+    FAHRENHEIT = "°F"

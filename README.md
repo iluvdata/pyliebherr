@@ -22,3 +22,7 @@ Python library to access the [Liebherr Smart Home API](https://developer.liebher
 ### 2026.5.0
 
 * Add support to using the server-sent events endpoint negating the need to poll.
+
+### 2026.5.1
+
+- Poll only the temperature controls (API temp unit mismatch workaround).

@@ -90,7 +90,7 @@ class LiebherrAPI:
                     if device.first_sse and [
                         control
                         for control in data
-                        if control["type"] == str(ControlType.TEMPERATURE)
+                        if control["type"] == str(ControlType.TEMPERATURE) and control["measurementUnit"] != device.temperature_unit
                     ]:
                         temp_controls: ResponseData = (
                             await self._get_temperature_controls(device.device_id)
@@ -108,8 +108,8 @@ class LiebherrAPI:
 
         task: Task[None] = create_task(
             connect_sse(),
-            eager_start=True,
-            name=f"Liebherr-{device.device_id}-SSE",  # pyright: ignore[reportCallIssue]
+            eager_start=True, # pyright: ignore[reportCallIssue]
+            name=f"Liebherr-{device.device_id}-SSE",  
         )
 
         task.add_done_callback(_handle_task_result)
