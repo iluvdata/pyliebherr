@@ -22,7 +22,7 @@ class LiebherrAuthException(LiebherrException):
 
 
 class LiebherrUpdateException(LiebherrException):
-    """Exception raised for update methodes in the Liebherr API."""
+    """Exception raised for update methods in the Liebherr API."""
 
 
 class LiebherrFetchException(LiebherrException):
@@ -34,8 +34,16 @@ class LiebherrFetchException(LiebherrException):
             super().__init__(api_error)
             return
         super().__init__(
-            f"Code: {api_error.get('status', 'Unknown status')}\n{api_error.get('message', 'An error has occured')}\n{api_error.get('error', 'Unknown error')}"
+            f"Code: {api_error.get('status', 'Unknown status')}\n{api_error.get('message', 'An error has occurred')}\n{api_error.get('error', 'Unknown error')}"
         )
+
+
+class LiebherrSSEException(LiebherrException):
+    """Exception raised for SSE errors in the Liebherr API."""
+
+    def __init__(self, message: str) -> None:
+        """Initialize the exception."""
+        super().__init__(f"SSE error: {message}")
 
 
 class LiebherrAPILimitExceededException(LiebherrFetchException):

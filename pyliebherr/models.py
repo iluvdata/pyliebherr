@@ -7,7 +7,8 @@ from typing import Annotated, Any
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
-from .const import ControlName, ControlType, ZonePosition, TempUnit
+from .const import ControlName, ControlType, TempUnit, ZonePosition
+from .exception import LiebherrSSEException
 
 MODEL_CONFIG: ConfigDict = ConfigDict(alias_generator=to_camel)
 
@@ -123,7 +124,9 @@ class LiebherrControl(BaseModel):
     supported_modes: list[str] | None = None
     has_max_ice: bool | None = None
     measurement_unit: TempUnit | None = Field(
-        validation_alias=AliasChoices("unit", "temperatureUnit"), serialization_alias="unit", default=None
+        validation_alias=AliasChoices("unit", "temperatureUnit"),
+        serialization_alias="unit",
+        default=None,
     )
 
     update_callback: Callable[[], None] | None = Field(None, exclude=True)
@@ -163,12 +166,13 @@ class LiebherrControl(BaseModel):
         """Fix the units for HA."""
         return (
             TempUnit.CELSIUS
-            if self.measurement_unit is None or self.measurement_unit == TempUnit.CELSIUS
+            if self.measurement_unit is None
+            or self.measurement_unit == TempUnit.CELSIUS
             else TempUnit.FAHRENHEIT
         )
 
 
-LiebherrControlKey = tuple[ControlName, int]
+LiebherrControlKey = tuple[ControlName, int | None]
 LiebherrControls = dict[LiebherrControlKey, LiebherrControl]
 
 
@@ -196,16 +200,31 @@ class LiebherrDevice(BaseModel):
     ] = Field(default_factory=dict)
 
     # Excluded from serialization
-    first_sse: bool = Field(False, exclude=True)
-    update_callback: Callable[["LiebherrDevice"], None] | None = Field(None, exclude=True)
+    available: bool = Field(False, exclude=True)
+    update_callback: Callable[[LiebherrDevice], None] | None = Field(None, exclude=True)
+    error_callbacks: list[Callable[[LiebherrSSEException], None]] = Field(
+        default_factory=list, exclude=True
+    )
     temperature_unit: TempUnit = Field(TempUnit.CELSIUS, exclude=True)
+
+    def add_error_callback(
+        self, error_callback: Callable[[LiebherrSSEException], None]
+    ) -> None:
+        """Add an error callback to call on errors."""
+        self.error_callbacks.append(error_callback)
 
     def updated(self, data: list[Mapping[str, Any]]) -> None:
         """Update received via SSE."""
         self._update_controls(data)
-        self.first_sse = True
+        self.available = True
         if callable(self.update_callback):
             self.update_callback(self)
+
+    def error(self, exc: LiebherrSSEException) -> None:
+        """Error received via SSE."""
+        self.available = False
+        for error_callback in self.error_callbacks:
+            error_callback(exc)
 
     def _update_controls(self, controls: list[Mapping[str, Any]]) -> None:
         """Get mapping of controls from a list or a dictionary."""
@@ -213,12 +232,12 @@ class LiebherrDevice(BaseModel):
         for dict_object in controls:
             control: LiebherrControl = LiebherrControl.model_validate(dict_object)
 
-            if not self.first_sse and control.type == ControlType.TEMPERATURE:
+            if not self.available and control.type == ControlType.TEMPERATURE:
                 self.temperature_unit = control.unit_of_measurement
 
-            control_key: tuple[ControlName, int] = (
+            control_key: LiebherrControlKey = (
                 ControlName(control.control_name),
-                control.zone_id or 0,
+                control.zone_id,
             )
 
             if self.controls.get(control_key):  # pylint: disable=no-member

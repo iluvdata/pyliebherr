@@ -25,4 +25,8 @@ Python library to access the [Liebherr Smart Home API](https://developer.liebher
 
 ### 2026.5.1
 
-- Poll only the temperature controls (API temp unit mismatch workaround).
+* Poll only the temperature controls (API temp unit mismatch workaround).
+
+### 2026.6.1
+
+* Added better error trapping and callbacks for SSE connection errors.

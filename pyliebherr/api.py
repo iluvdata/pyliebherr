@@ -2,7 +2,7 @@
 
 import asyncio
 from asyncio import Task, create_task
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import logging
 from ssl import SSLContext
 from typing import Any
@@ -15,6 +15,8 @@ from .exception import (
     LiebherrAPILimitExceededException,
     LiebherrAuthException,
     LiebherrFetchException,
+    LiebherrSSEException,
+    LiebherrUpdateException,
 )
 from .models import LiebherrControlRequest, LiebherrDevice
 
@@ -33,15 +35,9 @@ def _raise_for_error(response: Response) -> None:
         )
         if response.status_code == 429:
             raise LiebherrAPILimitExceededException(response_text)
-        _LOGGER.warning("Failed to fetch data @ path: %s", response.url.path)
+        if response.request.method == "POST":
+            raise LiebherrUpdateException(response_text)
         raise LiebherrFetchException(response_text)
-
-
-def _handle_task_result(task: Task[None]) -> None:
-    if exc := task.exception():
-        _LOGGER.error("%s error", task.get_name(), exc_info=exc)
-        return
-    _LOGGER.warning("%s ended", task.get_name())
 
 
 class LiebherrAPI:
@@ -50,7 +46,7 @@ class LiebherrAPI:
     def __init__(self, api_key: str, ssl_context: SSLContext | None = None) -> None:
         """Initialize the Liebherr HomeAPI."""
         self._client: AsyncClient
-        self._sse_tasks: set[Task[None]] = set()
+        self._sse_tasks: list[Task[None]] = []
         if ssl_context is None:
             self._client = AsyncClient(
                 timeout=Timeout(60, read=None),
@@ -69,10 +65,17 @@ class LiebherrAPI:
         """Test the api key."""
         await self._request()
 
-    def start_sse(self, device: LiebherrDevice) -> None:
-        """Register a callback function to call when SSE updates are received."""
+    def start_sse(
+        self, device: LiebherrDevice, delay: float = 0
+    ) -> Callable[[], None]:
+        """Register a callback function to call when SSE updates are received.
+
+        Returns a cancel callback.
+        """
 
         async def connect_sse() -> None:
+            if delay:
+                await asyncio.sleep(delay)
             async with aconnect_sse(
                 self._client,
                 "GET",
@@ -87,10 +90,11 @@ class LiebherrAPI:
                     data: ResponseData = sse.json()
 
                     # TODO:  remove this when api is fixed
-                    if device.first_sse and [
+                    if device.available and [
                         control
                         for control in data
-                        if control["type"] == str(ControlType.TEMPERATURE) and control["measurementUnit"] != device.temperature_unit
+                        if control["type"] == str(ControlType.TEMPERATURE)
+                        and control["unit"] != device.temperature_unit
                     ]:
                         temp_controls: ResponseData = (
                             await self._get_temperature_controls(device.device_id)
@@ -108,12 +112,35 @@ class LiebherrAPI:
 
         task: Task[None] = create_task(
             connect_sse(),
-            eager_start=True, # pyright: ignore[reportCallIssue]
-            name=f"Liebherr-{device.device_id}-SSE",  
+            eager_start=True, # py # pyright: ignore[reportCallIssue]
+            name=f"Liebherr-{device.device_id}-SSE",
         )
 
+        def _handle_task_result(task: Task[None]) -> None:
+            if exc := task.exception():
+                # TODO: change to warning after testing
+                _LOGGER.error(
+                    "%s error",
+                    task.get_name(),
+                    exc_info=exc,
+                )
+                self._sse_tasks.remove(task)
+                device.error(
+                    LiebherrSSEException(
+                        f"SSE connection error for device {device.device_id}: {exc}",
+                    )
+                )
+                return
+            _LOGGER.warning("%s ended", task.get_name())
+
         task.add_done_callback(_handle_task_result)
-        self._sse_tasks.add(task)
+        self._sse_tasks.append(task)
+
+        def _cancel_task():
+            self._sse_tasks.remove(task)
+            task.cancel()
+
+        return _cancel_task
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
@@ -154,12 +181,13 @@ class LiebherrAPI:
         return devices
 
     async def async_get_devices_wait_for_controls(
-        self, timeout: float = 10
+        self,
+        timeout: float = 10,
     ) -> list[LiebherrDevice]:
         """Get devices and wait for first SSE."""
 
         async def wait_for_first_sse(device: LiebherrDevice) -> None:
-            while not device.first_sse:
+            while not device.available:
                 await asyncio.sleep(0.5)
 
         devices: list[LiebherrDevice] = await self.async_get_devices()
