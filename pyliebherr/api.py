@@ -46,7 +46,7 @@ class LiebherrAPI:
     def __init__(self, api_key: str, ssl_context: SSLContext | None = None) -> None:
         """Initialize the Liebherr HomeAPI."""
         self._client: AsyncClient
-        self._sse_tasks: list[Task[None]] = []
+        self._sse_tasks: dict[str, Task[None]] = {}
         if ssl_context is None:
             self._client = AsyncClient(
                 timeout=Timeout(60, read=None),
@@ -122,7 +122,8 @@ class LiebherrAPI:
                     task.get_name(),
                     exc_info=exc,
                 )
-                self._sse_tasks.remove(task)
+                if device.device_id in self._sse_tasks:
+                    del self._sse_tasks[device.device_id]
                 device.error(
                     LiebherrSSEException(
                         f"SSE connection error for device {device.device_id}: {exc}",
@@ -132,17 +133,14 @@ class LiebherrAPI:
             _LOGGER.warning("%s ended", task.get_name())
 
         task.add_done_callback(_handle_task_result)
-        self._sse_tasks.append(task)
+        self._sse_tasks[device.device_id] = task
 
-        def _cancel_task(task: Task[None]) -> Callable[[], None]:
+        def _cancel_task() -> None:
+            task.cancel()
+            if device.device_id in self._sse_tasks:
+                del self._sse_tasks[device.device_id]
 
-            def cancel_task() -> None:
-                self._sse_tasks.remove(task)
-                task.cancel()
-
-            return cancel_task
-
-        return _cancel_task(task)
+        return _cancel_task
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
@@ -222,6 +220,6 @@ class LiebherrAPI:
 
     async def async_close(self) -> None:
         """Close the aiohttp session."""
-        for task in self._sse_tasks:
+        for task in self._sse_tasks.values():
             task.cancel()
         await self._client.aclose()

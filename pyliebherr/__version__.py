@@ -1,3 +1,3 @@
 """Library version."""
 
-VERSION = "2026.6.2"
+VERSION = "2026.6.3"
