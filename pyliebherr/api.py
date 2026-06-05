@@ -65,9 +65,7 @@ class LiebherrAPI:
         """Test the api key."""
         await self._request()
 
-    def start_sse(
-        self, device: LiebherrDevice, delay: float = 0
-    ) -> Callable[[], None]:
+    def start_sse(self, device: LiebherrDevice, delay: float = 0) -> Callable[[], None]:
         """Register a callback function to call when SSE updates are received.
 
         Returns a cancel callback.
@@ -112,7 +110,7 @@ class LiebherrAPI:
 
         task: Task[None] = create_task(
             connect_sse(),
-            eager_start=True, # py # pyright: ignore[reportCallIssue]
+            eager_start=True,  # py # pyright: ignore[reportCallIssue]
             name=f"Liebherr-{device.device_id}-SSE",
         )
 
@@ -136,11 +134,15 @@ class LiebherrAPI:
         task.add_done_callback(_handle_task_result)
         self._sse_tasks.append(task)
 
-        def _cancel_task():
-            self._sse_tasks.remove(task)
-            task.cancel()
+        def _cancel_task(task: Task[None]) -> Callable[[], None]:
 
-        return _cancel_task
+            def cancel_task() -> None:
+                self._sse_tasks.remove(task)
+                task.cancel()
+
+            return cancel_task
+
+        return _cancel_task(task)
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
