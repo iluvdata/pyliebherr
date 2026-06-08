@@ -116,12 +116,7 @@ class LiebherrAPI:
 
         def _handle_task_result(task: Task[None]) -> None:
             if exc := task.exception():
-                # TODO: change to warning after testing
-                _LOGGER.error(
-                    "%s error",
-                    task.get_name(),
-                    exc_info=exc,
-                )
+                _LOGGER.warning("%s error", task.get_name())
                 if device.device_id in self._sse_tasks:
                     del self._sse_tasks[device.device_id]
                 device.error(
