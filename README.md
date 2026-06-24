@@ -30,3 +30,10 @@ Python library to access the [Liebherr Smart Home API](https://developer.liebher
 ### 2026.6.1
 
 * Added better error trapping and callbacks for SSE connection errors.
+
+### 2026.6.5
+
+* SSE Cancellation error fix
+* Add support for temperature steps
+* Default to grabbing controls from REST API as SSE initial event often incomplete or inconsistent
+* Remove temperature unit mismatch work around now the API is fixed.
