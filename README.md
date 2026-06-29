@@ -37,3 +37,7 @@ Python library to access the [Liebherr Smart Home API](https://developer.liebher
 * Add support for temperature steps
 * Default to grabbing controls from REST API as SSE initial event often incomplete or inconsistent
 * Remove temperature unit mismatch work around now the API is fixed.
+
+### 2026.6.6
+
+* Switch back to SSE only as pushed controls now appear complete

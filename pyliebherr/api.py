@@ -10,11 +10,10 @@ from typing import Any
 from httpx import AsyncClient, Response, Timeout
 from httpx_sse import aconnect_sse
 
-from .const import BASE_API_URL, ControlType
+from .const import BASE_API_URL
 from .exception import (
     LiebherrAPILimitExceededException,
     LiebherrAuthException,
-    LiebherrException,
     LiebherrFetchException,
     LiebherrSSEException,
     LiebherrUpdateException,
@@ -81,7 +80,7 @@ class LiebherrAPI:
                 f"sse/devices/{device.device_id}/controls",
             ) as event_source:
                 event_source.response.raise_for_status()
-                _LOGGER.debug("Connected to Liebherr SSE")
+                _LOGGER.info("Connected %s to Liebherr SSE", device.device_id)
 
                 async for sse in event_source.aiter_sse():
                     _LOGGER.debug("SSE: %s received with data %s", sse.event, sse.data)
@@ -98,7 +97,7 @@ class LiebherrAPI:
 
         def _handle_task_result(task: Task[None]) -> None:
             if (not task.cancelled()) and (exc := task.exception()):
-                _LOGGER.warning("%s error", task.get_name())
+                _LOGGER.warning("%s error: %s", task.get_name(), str(exc))
                 if device.device_id in self._sse_tasks:
                     del self._sse_tasks[device.device_id]
                 device.error(
@@ -165,39 +164,17 @@ class LiebherrAPI:
     ) -> list[LiebherrDevice]:
         """Get devices and wait for first SSE."""
 
-        # async def wait_for_first_sse(device: LiebherrDevice) -> None:
-        #     while not device.available:
-        #         await asyncio.sleep(0.5)
+        async def wait_for_first_sse(device: LiebherrDevice) -> None:
+            while not device.available:
+                await asyncio.sleep(0.5)
 
         devices: list[LiebherrDevice] = await self.async_get_devices()
 
-        tasks: dict[str, Task[ResponseData]]
         async with asyncio.timeout(timeout), asyncio.TaskGroup() as tg:
-            tasks = {
-                device.device_id: tg.create_task(self._get_controls(device.device_id))
-                for device in devices
-            }
-        for device in devices:
-            task: Task[ResponseData] = tasks[device.device_id]
-            try:
-                device.updated(task.result())
-            except LiebherrException as ex:
-                _LOGGER.warning(
-                    "Failed to get controls for device %s",
-                    device.device_id,
-                    exc_info=ex,
-                )
+            for device in devices:
+                tg.create_task(wait_for_first_sse(device))
 
         return devices
-
-    async def _get_controls(self, device_id: str) -> ResponseData:
-        """Request a device controls from REST API."""
-
-        data: ResponseData = await self._request(f"/{device_id}/controls")
-
-        return [
-            control for control in data if control["type"] == ControlType.TEMPERATURE
-        ]
 
     async def async_set_value(
         self, device_id: str, control: LiebherrControlRequest
