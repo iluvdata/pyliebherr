@@ -227,6 +227,7 @@ class LiebherrDevice(BaseModel):
     error_callbacks: list[Callable[[LiebherrSSEException], None]] = Field(
         default_factory=list, exclude=True
     )
+    reconnect_attempt: int = Field(0, exclude=True)
 
     def add_error_callback(
         self, error_callback: Callable[[LiebherrSSEException], None]
@@ -238,12 +239,14 @@ class LiebherrDevice(BaseModel):
         """Update received via SSE."""
         self._update_controls(data)
         self.available = True
+        self.reconnect_attempt = 0
         if callable(self.update_callback):
             self.update_callback(self)
 
     def error(self, exc: LiebherrSSEException) -> None:
         """Error received via SSE."""
         self.available = False
+        self.reconnect_attempt += 1
         for error_callback in self.error_callbacks:
             error_callback(exc)
 

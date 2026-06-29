@@ -7,7 +7,7 @@ import logging
 from ssl import SSLContext
 from typing import Any
 
-from httpx import AsyncClient, Response, Timeout
+from httpx import AsyncClient, ConnectError, Response, Timeout
 from httpx_sse import aconnect_sse
 
 from .const import BASE_API_URL
@@ -122,7 +122,11 @@ class LiebherrAPI:
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
-        response: Response = await self._client.get(f"devices{path}")
+        response: Response
+        try:
+            response = await self._client.get(f"devices{path}")
+        except ConnectError as exc:
+            raise LiebherrFetchException(str(exc)) from exc
         _raise_for_error(response)
         data: ResponseData = response.json()
         _LOGGER.debug("Fetched data: %s", data)
@@ -160,13 +164,13 @@ class LiebherrAPI:
 
     async def async_get_devices_wait_for_controls(
         self,
-        timeout: float = 10,
+        timeout: float = 60,
     ) -> list[LiebherrDevice]:
         """Get devices and wait for first SSE."""
 
         async def wait_for_first_sse(device: LiebherrDevice) -> None:
             while not device.available:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1)
 
         devices: list[LiebherrDevice] = await self.async_get_devices()
 
