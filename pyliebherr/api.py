@@ -30,14 +30,14 @@ def _raise_for_error(response: Response) -> None:
         _LOGGER.debug("Failed response text: %s", response.text)
         if response.status_code == 401:
             raise LiebherrAuthException
-        response_text: str | dict[str, str] = (
-            response.json() if response.request.method != "HEAD" else ""
+        response_text: dict[str, str] = (
+            response.json() if response.request.method != "HEAD" else {"message": ""}
         )
         if response.status_code == 429:
-            raise LiebherrAPILimitExceededException(response_text)
+            raise LiebherrAPILimitExceededException(response_text.get("message"))
         if response.request.method == "POST":
-            raise LiebherrUpdateException(response_text)
-        raise LiebherrFetchException(response_text)
+            raise LiebherrUpdateException(response_text.get("message"))
+        raise LiebherrFetchException(response_text.get("message"))
 
 
 class LiebherrAPI:
