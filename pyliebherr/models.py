@@ -4,14 +4,7 @@ from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import (
-    AliasChoices,
-    BaseModel,
-    ConfigDict,
-    Field,
-    PlainSerializer,
-    field_validator,
-)
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, PlainSerializer
 from pydantic.alias_generators import to_camel
 
 from .const import ControlName, ControlType, TempUnit, ZonePosition
@@ -135,21 +128,16 @@ class LiebherrControl(BaseModel):
         serialization_alias="unit",
         default=None,
     )
-    temperature_steps: list[int] = Field(
+    temp_steps: list[int] = Field(
         validation_alias="setTemperatureSteps",
         serialization_alias="setTemperatureSteps",
         default=[],
     )
-
-    @field_validator("temperature_steps", mode="before")
-    @classmethod
-    def validate_temp_steps(cls, value: Any) -> list[int]:
-        """Custom validator."""
-        if not value:
-            return []
-        if not isinstance(value, list):
-            raise TypeError("setTemperatureSteps is not a list")
-        return [int(val) for val in value]
+    use_temp_steps: bool = Field(
+        False,
+        validation_alias="setTemperatureStepsEnabled",
+        serialization_alias="setTemperatureStepsEnabled",
+    )
 
     update_callback: Callable[[], None] | None = Field(None, exclude=True)
 
