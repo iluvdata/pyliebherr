@@ -38,6 +38,10 @@ class LiebherrFetchException(LiebherrException):
         )
 
 
+class LiebherrTimeout(LiebherrException):
+    """Exception for timeouts (including 504 timeouts)."""
+
+
 class LiebherrSSEException(LiebherrException):
     """Exception raised for SSE errors in the Liebherr API."""
 

@@ -3,12 +3,12 @@
 import asyncio
 from asyncio import Task, create_task
 from collections.abc import Callable, Mapping
+import json
 import logging
-from ssl import SSLContext
 from typing import Any
 
-from httpx import AsyncClient, ConnectError, Response, Timeout
-from httpx_sse import aconnect_sse
+from aiohttp import ClientError, ClientResponse, ClientSession
+from aiohttp_sse_client2 import client as sse_client
 
 from .const import BASE_API_URL
 from .exception import (
@@ -25,17 +25,21 @@ type ResponseData = list[Mapping[str, Any]]
 _LOGGER = logging.getLogger(__package__)
 
 
-def _raise_for_error(response: Response) -> None:
-    if response.status_code not in [200, 204]:
+async def _raise_for_error(response: ClientResponse) -> None:
+    if response.status not in [200, 204]:
         _LOGGER.debug("Failed response text: %s", response.text)
-        if response.status_code == 401:
+        if response.status == 401:
             raise LiebherrAuthException
         response_text: dict[str, str] = (
-            response.json() if response.request.method != "HEAD" else {"message": ""}
+            await response.json()
+            if response.headers["Content-Type"] == "application/json"
+            else {"message": await response.text()}
         )
-        if response.status_code == 429:
+        if response.status == 429:
             raise LiebherrAPILimitExceededException(response_text.get("message"))
-        if response.request.method == "POST":
+        if response.status == 504:
+            response_text["message"] = "504 Gateway Timeout"
+        if response.method == "POST":
             raise LiebherrUpdateException(response_text.get("message"))
         raise LiebherrFetchException(response_text.get("message"))
 
@@ -43,23 +47,11 @@ def _raise_for_error(response: Response) -> None:
 class LiebherrAPI:
     """Liebherr API Class."""
 
-    def __init__(self, api_key: str, ssl_context: SSLContext | None = None) -> None:
+    def __init__(self, api_key: str, session: ClientSession) -> None:
         """Initialize the Liebherr HomeAPI."""
-        self._client: AsyncClient
+        self._session = session
+        self._api_key = api_key
         self._sse_tasks: dict[str, Task[None]] = {}
-        if ssl_context is None:
-            self._client = AsyncClient(
-                timeout=Timeout(60, read=None),
-                headers={"api-key": api_key},
-                base_url=f"{BASE_API_URL}",
-            )
-        else:
-            self._client = AsyncClient(
-                timeout=Timeout(60, read=None),
-                headers={"api-key": api_key},
-                base_url=f"{BASE_API_URL}",
-                verify=ssl_context,
-            )
 
     async def async_test_key(self) -> None:
         """Test the api key."""
@@ -71,27 +63,29 @@ class LiebherrAPI:
         Returns a cancel callback.
         """
 
+        def _opened() -> None:
+            """Log that connection is established."""
+            _LOGGER.info("Connected %s to Liebherr SSE", device.device_id)
+
         async def connect_sse() -> None:
             if delay:
                 await asyncio.sleep(delay)
-            async with aconnect_sse(
-                self._client,
-                "GET",
-                f"sse/devices/{device.device_id}/controls",
+            async with sse_client.EventSource(
+                url=f"{BASE_API_URL}sse/devices/{device.device_id}/controls",
+                session=self._session,
+                headers={"api-key": self._api_key},
+                on_open=_opened,
             ) as event_source:
-                event_source.response.raise_for_status()
-                _LOGGER.info("Connected %s to Liebherr SSE", device.device_id)
-
-                async for sse in event_source.aiter_sse():
-                    _LOGGER.debug("SSE: %s received with data %s", sse.event, sse.data)
-
-                    data: ResponseData = sse.json()
-
-                    device.updated(data)
+                async for sse in event_source:
+                    _LOGGER.debug(
+                        "SSE: %s received with data %s", sse.message, sse.data
+                    )
+                    data = json.loads(sse.data)
+                    device.updated(data if isinstance(data, list) else [data])
 
         task: Task[None] = create_task(
             connect_sse(),
-            eager_start=True,  # py # pyright: ignore[reportCallIssue]
+            eager_start=True,
             name=f"Liebherr-{device.device_id}-SSE",
         )
 
@@ -122,32 +116,34 @@ class LiebherrAPI:
 
     async def _request(self, path: str = "") -> ResponseData:
         _LOGGER.debug("Requesting data: /devices%s", path)
-        response: Response
+        response: ClientResponse
         try:
-            response = await self._client.get(f"devices{path}")
-        except ConnectError as exc:
+            async with self._session.get(
+                f"{BASE_API_URL}devices{path}", headers={"api-key": self._api_key}
+            ) as response:
+                await _raise_for_error(response)
+                data: ResponseData = await response.json()
+                _LOGGER.debug("Fetched data: %s", data)
+                return data
+        except ClientError as exc:
             raise LiebherrFetchException(str(exc)) from exc
-        _raise_for_error(response)
-        data: ResponseData = response.json()
-        _LOGGER.debug("Fetched data: %s", data)
-        return data
 
     async def _post(self, path, payload: dict[str, Any]) -> ResponseData | None:
         _LOGGER.debug("Posting data to: /devices%s", f"devices{path}")
-        response: Response = await self._client.post(
-            f"devices{path}",
+        async with self._session.post(
+            f"{BASE_API_URL}devices{path}",
             json=payload,
             headers={
                 "Content-Type": "application/json",
             },
-        )
-        _raise_for_error(response)
-        if response.status_code == 204:
-            # Success but no body is returned.
-            return None
-        data: ResponseData = await response.json()
-        _LOGGER.debug("Posted data response: %s", data)
-        return data
+        ) as response:
+            await _raise_for_error(response)
+            if response.status == 204:
+                # Success but no body is returned.
+                return None
+            data: ResponseData = await response.json()
+            _LOGGER.debug("Posted data response: %s", data)
+            return data
 
     async def async_get_devices(self) -> list[LiebherrDevice]:
         """Retrieve the list of appliances."""
@@ -164,7 +160,7 @@ class LiebherrAPI:
 
     async def async_get_devices_wait_for_controls(
         self,
-        timeout: float = 60,
+        timeout: float = 30,
     ) -> list[LiebherrDevice]:
         """Get devices and wait for first SSE."""
 
@@ -193,4 +189,3 @@ class LiebherrAPI:
         """Close the aiohttp session."""
         for task in self._sse_tasks.values():
             task.cancel()
-        await self._client.aclose()

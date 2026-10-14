@@ -59,6 +59,7 @@ class ZonePosition(StrEnum):
     BOTTOM = "bottom"
     MIDDLE = "middle"
 
+
 class TempUnit(StrEnum):
     """Temperature Units."""
 
