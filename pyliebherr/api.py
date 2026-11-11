@@ -1,10 +1,10 @@
 """The Liebherr Smart Device API."""
 
 import asyncio
-from asyncio import Task, create_task
-from collections.abc import Callable, Mapping
 import json
 import logging
+from asyncio import Task, create_task
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from aiohttp import ClientError, ClientResponse, ClientSession
@@ -36,12 +36,14 @@ async def _raise_for_error(response: ClientResponse) -> None:
             else {"message": await response.text()}
         )
         if response.status == 429:
-            raise LiebherrAPILimitExceededException(response_text.get("message"))
+            raise LiebherrAPILimitExceededException(
+                response_text.get("message", "No message")
+            )
         if response.status == 504:
             response_text["message"] = "504 Gateway Timeout"
         if response.method == "POST":
             raise LiebherrUpdateException(response_text.get("message"))
-        raise LiebherrFetchException(response_text.get("message"))
+        raise LiebherrFetchException(response_text.get("message", "No message"))
 
 
 class LiebherrAPI:
@@ -129,11 +131,12 @@ class LiebherrAPI:
             raise LiebherrFetchException(str(exc)) from exc
 
     async def _post(self, path, payload: dict[str, Any]) -> ResponseData | None:
-        _LOGGER.debug("Posting data to: /devices%s", f"devices{path}")
+        _LOGGER.debug("Posting data to: /devices%s", path)
         async with self._session.post(
             f"{BASE_API_URL}devices{path}",
             json=payload,
             headers={
+                "api-key": self._api_key,
                 "Content-Type": "application/json",
             },
         ) as response:

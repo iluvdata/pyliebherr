@@ -34,7 +34,9 @@ class LiebherrFetchException(LiebherrException):
             super().__init__(api_error)
             return
         super().__init__(
-            f"Code: {api_error.get('status', 'Unknown status')}\n{api_error.get('message', 'An error has occurred')}\n{api_error.get('error', 'Unknown error')}"
+            f"Code: {api_error.get('status', 'Unknown status')}"
+            "\n{api_error.get('message', 'An error has occurred')}"
+            "\n{api_error.get('error', 'Unknown error')}"
         )
 
 

@@ -41,3 +41,7 @@ Python library to access the [Liebherr Smart Home API](https://developer.liebher
 ### 2026.6.6
 
 * Switch back to SSE only as pushed controls now appear complete
+
+### 2026.11.0
+
+* Switch to aiohttp
