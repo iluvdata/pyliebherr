@@ -98,7 +98,7 @@ class LiebherrAPI:
                     del self._sse_tasks[device.device_id]
                 device.error(
                     LiebherrSSEException(
-                        f"SSE connection error for device {device.device_id}: {exc}",
+                        f"SSE connection error for device {device.device_id}: {exc!s}",
                     )
                 )
                 return
