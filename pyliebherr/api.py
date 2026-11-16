@@ -1,13 +1,13 @@
 """The Liebherr Smart Device API."""
 
 import asyncio
-import json
-import logging
 from asyncio import Task, create_task
 from collections.abc import Callable, Mapping
+import json
+import logging
 from typing import Any
 
-from aiohttp import ClientError, ClientResponse, ClientSession
+from aiohttp import ClientError, ClientResponse, ClientSession, ClientTimeout
 from aiohttp_sse_client2 import client as sse_client
 
 from .const import BASE_API_URL
@@ -46,6 +46,13 @@ async def _raise_for_error(response: ClientResponse) -> None:
         raise LiebherrFetchException(response_text.get("message", "No message"))
 
 
+SSE_TIMEOUT = ClientTimeout(
+    total=None,
+    sock_connect=10,
+    sock_read=60,
+)
+
+
 class LiebherrAPI:
     """Liebherr API Class."""
 
@@ -77,6 +84,7 @@ class LiebherrAPI:
                 session=self._session,
                 headers={"api-key": self._api_key},
                 on_open=_opened,
+                timeout=SSE_TIMEOUT,
             ) as event_source:
                 async for sse in event_source:
                     _LOGGER.debug(
@@ -93,7 +101,11 @@ class LiebherrAPI:
 
         def _handle_task_result(task: Task[None]) -> None:
             if (not task.cancelled()) and (exc := task.exception()):
-                _LOGGER.warning("%s error: %s", task.get_name(), str(exc))
+                _LOGGER.warning(
+                    "%s error: %s",
+                    task.get_name(),
+                    "timemout" if isinstance(exc, TimeoutError) else str(exc),
+                )
                 if device.device_id in self._sse_tasks:
                     del self._sse_tasks[device.device_id]
                 device.error(
